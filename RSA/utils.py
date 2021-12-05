@@ -5,7 +5,6 @@
 
 Utilities for natural language agreement task
 '''
-
 import numpy as np
 from scipy.stats import spearmanr
 from statsmodels.stats.descriptivestats import sign_test
@@ -63,7 +62,7 @@ def create_word_idx_matrices(sentence_list):
 	return word2idx, idx2word
 
 """
-Script that runs all GloVe embedding tests for Unequal Representation: Analyzing Intersectional Biases in Word Embeddings 
+Script that runs all Word2vec embedding tests using code from Unequal Representation: Analyzing Intersectional Biases in Word Embeddings 
 Using Representational Similarity Analysis by Michael Lepori, presented at COLING 2020
 """
 
@@ -78,24 +77,19 @@ def preprocess_data(corpus):
     return sent_list
 
 
-def get_glove_embeds(glove_path, dim, corpus):
-    # Get glove embeddings of all terms in the corpus
+def get_embeds(embeds_path, dim, corpus):
+    # Get embeddings of all terms in the corpus
     word2idx, idx2word = create_word_idx_matrices([corpus])
     print("word idx matrices created")
-    glove = create_embedding_dictionary(glove_path, dim, word2idx, idx2word)
-    print("glove matrices created")
+    embeds_dict = create_embedding_dictionary(embeds_path, dim, word2idx, idx2word)
+    print("matrices created")
 
-    glove_embeds = []
+    embeds = []
 
     for word in corpus:
-        glove_embeds.append(glove[word2idx[word]])
+        embeds.append(embeds_dict[word2idx[word]])
         
-    return np.array(glove_embeds)
-
-"""
-make_concept and code that prints rsa scores as written for Unequal Representation: Analyzing Intersectional Biases in Word Embeddings 
-Using Representational Similarity Analysis by Michael Lepori, presented at COLING 2020 with slight change to print scores for three groups instead of two. 
-"""
+    return np.array(embeds)
 
 def make_concept3(samps, grp1, grp2, grp3, attr):
     # Make the hypothesis models encoding the hypothesized representational geometry.
@@ -104,25 +98,25 @@ def make_concept3(samps, grp1, grp2, grp3, attr):
     grp3_attr = np.zeros((len(samps), len(samps)))
     
     for i in range(len(samps)):
-        sent1 = samps[i]
+        word1 = samps[i]
         for j in range(len(samps)):
-            sent2 = samps[j]
-            if ((sent1 in attr or sent1 in grp1) and (sent2 in attr or sent2 in grp1)) or ((sent1 in grp2) and (sent2 in grp2)):
-                # Represents the hypothesis that group 1 has the attribute/concept under study, and group 2 does not
+            word2 = samps[j]
+            if ((word1 in attr or word1 in grp1) and (word2 in attr or word2 in grp1)) or ((word1 in grp2) and (word2 in grp2)) or ((word1 in grp3) and (word2 in grp3)):
+                # Represents the hypothesis that group 1 has the attribute/concept under study, and group 2 and 3 does not
                 grp1_attr[i][j] = 0
                 # Dissimilarity matrices, so 0 means perfect alignment
             else:
                 grp1_attr[i][j] = 1
 
-            if ((sent1 in attr or sent1 in grp2) and (sent2 in attr or sent2 in grp2)) or ((sent1 in grp1) and (sent2 in grp1)):
-                # Represents the hypothesis that group 2 has the attribute/concept under study, and group 1 does not
+            if ((word1 in attr or word1 in grp2) and (word2 in attr or word2 in grp2)) or ((word1 in grp1) and (word2 in grp1)) or ((word1 in grp3) and (word2 in grp3)):
+                # Represents the hypothesis that group 2 has the attribute/concept under study, and group 1 and 3 does not
                 grp2_attr[i][j] = 0
                 # Dissimilarity matrices, so 0 means perfect alignment
             else:
                 grp2_attr[i][j] = 1
                 
-            if ((sent1 in attr or sent1 in grp3) and (sent2 in attr or sent2 in grp3)) or ((sent1 in grp3) and (sent2 in grp3)):
-                # Represents the hypothesis that group 2 has the attribute/concept under study, and group 1 does not
+            if ((word1 in attr or word1 in grp3) and (word2 in attr or word2 in grp3)) or ((word1 in grp1) and (word2 in grp1)) or ((word1 in grp2) and (word2 in grp2)):
+                # Represents the hypothesis that group 3 has the attribute/concept under study, and group 1 and 2 does not
                 grp3_attr[i][j] = 0
                 # Dissimilarity matrices, so 0 means perfect alignment
             else:
@@ -132,7 +126,7 @@ def make_concept3(samps, grp1, grp2, grp3, attr):
     return grp1_attr, grp2_attr, grp3_attr
 
 def get_RSA3(sheet_path, embedding_path, dims):
-    results = {}
+    results = []
     # Set random seed for reproducibility
     np.random.seed(seed=9)
     random.seed(9)
@@ -155,7 +149,7 @@ def get_RSA3(sheet_path, embedding_path, dims):
 
         # corpus is all words in dataset
         corpus = group1 + group2 + group3 + concept
-        glove_embeds= get_glove_embeds(embedding_path, dims, preprocess_data(corpus))
+        embeds= get_embeds(embedding_path, dims, preprocess_data(corpus))
         print("embeds generated")
 
         rsa_grp1 = []
@@ -176,37 +170,34 @@ def get_RSA3(sheet_path, embedding_path, dims):
 
             # Make hypothesis models, as well as reference models
             samp_sentences = np.array(corpus)[sample]
-            samp_glove = glove_embeds[sample]
+            samp_embeds = embeds[sample]
 
             grp1_attr_model, grp2_attr_model, grp3_attr_model  = make_concept3(samp_sentences, group1, group2, group3, concept)
 
             # 1 - spearman's r similarity matrix to make dissimilarity matrix
-            glove_sim = np.ones(samp_glove.shape[0]) - spearmanr(samp_glove, axis=1)[0]
+            embeds_sim = np.ones(samp_embeds.shape[0]) - spearmanr(samp_embeds, axis=1)[0]
 
             # Take upper triangle
-            glove_sim = glove_sim[np.triu_indices(samp_glove.shape[0], 1)].reshape(-1)
-            grp1_attr_model = grp1_attr_model[np.triu_indices(samp_glove.shape[0], 1)].reshape(-1)
-            grp2_attr_model = grp2_attr_model[np.triu_indices(samp_glove.shape[0], 1)].reshape(-1)
-            grp3_attr_model = grp3_attr_model[np.triu_indices(samp_glove.shape[0], 1)].reshape(-1)
+            embeds_sim = embeds_sim[np.triu_indices(samp_embeds.shape[0], 1)].reshape(-1)
+            grp1_attr_model = grp1_attr_model[np.triu_indices(samp_embeds.shape[0], 1)].reshape(-1)
+            grp2_attr_model = grp2_attr_model[np.triu_indices(samp_embeds.shape[0], 1)].reshape(-1)
+            grp3_attr_model = grp3_attr_model[np.triu_indices(samp_embeds.shape[0], 1)].reshape(-1)
 
-            # Append representational similarity for group 1 and group 2
-            rsa_grp1.append(spearmanr([glove_sim, grp1_attr_model], axis=1)[0])
-            rsa_grp2.append(spearmanr([glove_sim, grp2_attr_model], axis=1)[0])
-            rsa_grp3.append(spearmanr([glove_sim, grp3_attr_model], axis=1)[0])
+            # Append representational similarity for group 1 and group 2 and group 3
+            rsa_grp1.append(spearmanr([embeds_sim, grp1_attr_model], axis=1)[0])
+            rsa_grp2.append(spearmanr([embeds_sim, grp2_attr_model], axis=1)[0])
+            rsa_grp3.append(spearmanr([embeds_sim, grp3_attr_model], axis=1)[0])
 
         print(f'RSA {grp1_name} {attr_name}: {np.mean(rsa_grp1)} STD: {np.std(rsa_grp1)}')
         print(f'RSA {grp2_name} {attr_name}: {np.mean(rsa_grp2)} STD: {np.std(rsa_grp2)}')
         print(f'RSA {grp3_name} {attr_name}: {np.mean(rsa_grp3)} STD: {np.std(rsa_grp3)}')
 
-        # Significance test of differences between group 1 RSA and group 2 RSA
+        # Significance test of differences between group 1 RSA and group 2 RSA and group 3 RSA
         print(f'Sign Test {grp1_name} vs. {grp2_name}: {sign_test(np.array(rsa_grp1) - np.array(rsa_grp2))[1]}')
         print(f'Sign Test {grp1_name} vs. {grp3_name}: {sign_test(np.array(rsa_grp1) - np.array(rsa_grp3))[1]}')
         print(f'Sign Test {grp3_name} vs. {grp2_name}: {sign_test(np.array(rsa_grp3) - np.array(rsa_grp2))[1]}\n')
         
-        results[grp1_name+"-"+attr_name] =  (np.mean(rsa_grp1), grp1_name, attr_name)
-        results[grp2_name+"-"+attr_name] =  (np.mean(rsa_grp2), grp2_name, attr_name)
-        results[grp3_name+"-"+attr_name] =  (np.mean(rsa_grp3), grp3_name, attr_name)
+        results.append([np.mean(rsa_grp1), grp1_name, attr_name])
+        results.append([np.mean(rsa_grp2), grp2_name, attr_name])
+        results.append([np.mean(rsa_grp3), grp3_name, attr_name])
     return (results)
-
-        
-
